@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Proposal Engine V4 - デモUI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #fafaf9; padding: 40px 20px; color: #2C2C2A; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+const { useState, useEffect } = React;
+
+const periodPresets = [
+  {label:"1Q（4-6月）",value:"2026年度 1Q（4-6月）"},
+  {label:"2Q（7-9月）",value:"2026年度 2Q（7-9月）"},
+  {label:"3Q（10-12月）",value:"2026年度 3Q（10-12月）"},
+  {label:"4Q（1-3月）",value:"2026年度 4Q（1-3月）"},
+  {label:"GW",value:"ゴールデンウィーク（4/29-5/6）"},
+  {label:"夏休み",value:"夏休み期間（7/20-8/31）"},
+  {label:"クリスマス商戦",value:"クリスマス商戦（11/15-12/25）"},
+];
+const targetSuggestions = ["ALL","ファミリー","Z世代","シニア","ワーカー","キッズ","インバウンド"];
+const areaByFacility = {
+  sagami: ["足元（相模野）","一次（瑞穂・新座）","二次（緑陵・湘南東）","広域"],
+  grace: ["足元（港南）","一次（港北・新都）","二次（川都・高尾）","広域"],
+  baypark: ["足元（京葉）","一次（東京湾・潮見）","二次（湾岸・新浦）","広域"],
+};
+const indSuggestions = ["衣料品","食物販","家庭用品","コスメ","身の回り品","飲食"];
+const defaultKpis = ["来館促進","買上促進","買い回り","顧客化","キャッシュレス"];
+
+const strategies = [
+  { id:1,name:"AR de お買物スタンプラリー",type:"新規",cat:"買い回り",budget:"140万円〜",period:"7/12〜7/31",target:"ALL",tenant:"ALL（対象30店舗）",
+    summary:"従来のQRスタンプラリーをAR技術で進化。LINEミニアプリで館内ARスポットを巡り、3店舗で各1,000円以上のお買い上げでスタンプ獲得。",
+    reason:"QRラリー3Q連続のためAR版に進化。ALL対象＋低単価条件で成功率80%。",risk:"AR開発コスト要確認。代替案：LINEミニアプリ版。",past:"QRラリー：5回中4回目標達成。"},
+  { id:2,name:"夏のビューティーウィーク",type:"新規",cat:"買上",budget:"200万円〜",period:"7/19〜7/27",target:"女性（20-40代）",tenant:"グレースビューティー / ナチュラルバス / ラグジュアリーコスメ",
+    summary:"夏のコスメ需要を捉えた合同フェア。対象4店舗で合計5,000円以上お買い上げで限定コスメポーチをプレゼント。",
+    reason:"身の回り品が前年比94%と不振。コスメは夏に需要増。相模野未実施。",risk:"テナント4店舗との事前調整必須。",past:"港南で類似施策→参加者850名。"},
+  { id:3,name:"提携スーパー連携 整理券制買物券販売会",type:"進化",cat:"集客",budget:"210万円〜",period:"8月上旬（2日間）",target:"足元ファミリー",tenant:"ALL（日用品）",
+    summary:"グリーンプラザ相模野にて買物券販売会。整理券制＋時間帯制のハイブリッド運営。",
+    reason:"過去4回全完売。端境期の売上補填に最も確実。",risk:"グリーンプラザへの実施可否確認が必要。",past:"4回実施/毎回完売。"},
+  { id:4,name:"Z世代キャッシュレスブースト",type:"定番",cat:"顧客化",budget:"130万円〜",period:"8/1〜8/31",target:"Z世代（20代）",tenant:"星光茶房 / アクティブスポーツ / エコライフストア",
+    summary:"20代向け店舗にて提クレ決済限定アプリクーポンを集約し訴求。",
+    reason:"Z世代稼働率が前年比92%と低迷。対象店舗を6→9に拡張。",risk:"原資30万円は販促費負担。",past:"2024年10月に類似施策→稼働率+3.2%。"},
+  { id:5,name:"近隣企業サマービズ特典",type:"定番",cat:"買上",budget:"90万円〜",period:"7/1〜8/31",target:"ワーカー",tenant:"ビジネス商材扱い店舗",
+    summary:"近隣企業限定のサマービズ衣料特典をチラシ配布。ビールチケット付与。",
+    reason:"近隣ワーカー来館促進は通年課題。クールビズ需要を狙う。",risk:"特典費用は販促費補填。",past:"2024年10月に通勤着特典→認知拡大成功。"},
+  { id:6,name:"七夕キッズワークショップ",type:"新規",cat:"集客",budget:"150万円〜",period:"7/5-6（土日）",target:"キッズファミリー",tenant:"ALL",
+    summary:"七夕モチーフのWS。短冊づくり＋星のランタン制作。キャッシュレス決済での買上を参加条件に。",
+    reason:"クリスマスWSが好評のため夏にも展開。七夕は相模野未実施。",risk:"講師手配リードタイム確認。",past:"クリスマスWS：約140万円、20人×4回/日。"},
+];
+
+const debates = [
+  {agent:"戦略家",color:"#534AB7",text:"2Qは衣料品の端境期。買い回りで客単価補填。Z世代稼働率も前年比92%。"},
+  {agent:"発想家",color:"#1D9E75",text:"ARスタンプラリーを提案。QRラリー3Q連続のため進化版。新規でビューティーウィーク追加。"},
+  {agent:"批評家",color:"#D85A30",text:"AR技術の実現可否確認が必要。提携スーパー連携は過去の徒列苦情を考慮すべき。"},
+  {agent:"発想家",color:"#1D9E75",text:"批評を踏まえ修正。ARはLINEミニアプリ版も代替案に。"},
+  {agent:"Lead",color:"#378ADD",text:"合意完了。6施策。新規50%/定番33%/進化17%。"},
+];
+
+const aspectRatios = [{label:"16:9（横長）",value:"16:9"},{label:"4:3",value:"4:3"},{label:"1:1（正方形）",value:"1:1"},{label:"9:16（縦長）",value:"9:16"}];
+
+function Chip({label,selected,onClick,muted}){return<button onClick={onClick} style={{padding:"6px 14px",borderRadius:20,border:selected?"1.5px solid #1D9E75":muted?"1px dashed rgba(128,128,120,0.15)":"1px solid rgba(128,128,120,0.2)",background:selected?"rgba(29,158,117,0.1)":"transparent",color:selected?"#0F6E56":muted?"rgba(128,128,120,0.35)":"inherit",fontSize:13,fontWeight:selected?500:400,cursor:"pointer",transition:"all 0.2s",fontFamily:"inherit"}}>{label}</button>}
+
+function TagInput({tags,onChange,placeholder,suggestions}){
+  const [input,setInput]=useState("");
+  const add=v=>{const t=v.trim();if(t&&!tags.includes(t)){onChange([...tags,t])}setInput("")};
+  const remove=v=>onChange(tags.filter(t=>t!==v));
+  const onKey=e=>{if((e.key==="Enter"||e.key==="、"||e.key===",")&&input.trim()){e.preventDefault();add(input)}if(e.key==="Backspace"&&!input&&tags.length)remove(tags[tags.length-1])};
+  return(
+    <div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"8px 12px",borderRadius:8,border:"1px solid rgba(128,128,120,0.2)",background:"transparent",minHeight:38,alignItems:"center",boxSizing:"border-box"}}>
+        {tags.map(t=><span key={t} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:14,background:"rgba(29,158,117,0.1)",color:"#0F6E56",fontSize:12.5,fontWeight:500}}>{t}<span onClick={()=>remove(t)} style={{cursor:"pointer",color:"rgba(15,110,86,0.5)",fontSize:14,lineHeight:1}}>×</span></span>)}
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey} onBlur={()=>{if(input.trim())add(input)}} placeholder={tags.length?"":(placeholder||"")}
+          style={{border:"none",outline:"none",flex:1,minWidth:80,fontSize:13,fontFamily:"inherit",color:"inherit",background:"transparent",padding:"2px 0"}}/>
+      </div>
+      {suggestions&&suggestions.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:6}}>
+        {suggestions.filter(s=>!tags.includes(s)).map(s=><Chip key={s} label={s} muted onClick={()=>add(s)}/>)}
+      </div>}
+    </div>
+  );
+}
+
+function DragSortList({items,onChange}){
+  const [dragIdx,setDragIdx]=useState(null);
+  const [overIdx,setOverIdx]=useState(null);
+  const onDragStart=(e,i)=>{setDragIdx(i);e.dataTransfer.effectAllowed="move"};
+  const onDragOver=(e,i)=>{e.preventDefault();setOverIdx(i)};
+  const onDrop=(e,i)=>{
+    e.preventDefault();
+    if(dragIdx===null||dragIdx===i)return;
+    const next=[...items];
+    const [moved]=next.splice(dragIdx,1);
+    next.splice(i,0,moved);
+    onChange(next);
+    setDragIdx(null);setOverIdx(null);
+  };
+  const onDragEnd=()=>{setDragIdx(null);setOverIdx(null)};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+      {items.map((item,i)=>(
+        <div key={item} draggable onDragStart={e=>onDragStart(e,i)} onDragOver={e=>onDragOver(e,i)} onDrop={e=>onDrop(e,i)} onDragEnd={onDragEnd}
+          style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,
+            border:overIdx===i&&dragIdx!==null?"1.5px dashed #1D9E75":"1px solid rgba(128,128,120,0.15)",
+            background:dragIdx===i?"rgba(29,158,117,0.06)":"rgba(128,128,120,0.02)",
+            cursor:"grab",transition:"all 0.15s",userSelect:"none",fontFamily:"inherit"}}>
+          <span style={{fontSize:12,fontWeight:600,color:"#1D9E75",minWidth:18}}>{i+1}</span>
+          <span style={{color:"rgba(128,128,120,0.3)",fontSize:14,cursor:"grab"}}>⠿</span>
+          <span style={{fontSize:13,fontWeight:i===0?500:400}}>{item}</span>
+          {i===0&&<span style={{marginLeft:"auto",fontSize:10,color:"#1D9E75",background:"rgba(29,158,117,0.08)",padding:"1px 8px",borderRadius:8}}>最優先</span>}
+        </div>
+      ))}
+      <div style={{fontSize:11,color:"rgba(128,128,120,0.35)",marginTop:2}}>↕ ドラッグして優先順位を並べ替え</div>
+    </div>
+  );
+}
+
+function TypeBadge({type}){const m={"新規":{bg:"rgba(29,158,117,0.12)",c:"#0F6E56"},"進化":{bg:"rgba(83,74,183,0.1)",c:"#534AB7"},"定番":{bg:"rgba(136,135,128,0.08)",c:"#5F5E5A"}};const v=m[type]||m["定番"];return<span style={{padding:"2px 10px",borderRadius:12,background:v.bg,color:v.c,fontSize:11,fontWeight:500}}>{type}</span>}
+
+function StatusBadge({status}){const m={keep:{l:"確定",c:"#0F6E56"},replace:{l:"入替候補",c:"#854F0B"},delete:{l:"削除",c:"#993C1D"}};const v=m[status];if(!v)return null;return<span style={{padding:"2px 10px",borderRadius:12,background:v.c+"18",color:v.c,fontSize:11,fontWeight:500}}>{v.l}</span>}
+
+function ActBtn({icon,label,active,color,onClick}){return<button onClick={onClick} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:6,border:active?`1.5px solid ${color}`:"1px solid rgba(128,128,120,0.15)",background:active?color+"14":"transparent",color:active?color:"rgba(128,128,120,0.45)",fontSize:11.5,fontWeight:active?500:400,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",whiteSpace:"nowrap"}}>{icon} {label}</button>}
+
+function Toggle({on,onToggle,label}){
+  return(
+    <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}}>
+      <div onClick={onToggle} style={{position:"relative",width:36,height:20,borderRadius:10,background:on?"#534AB7":"rgba(128,128,120,0.2)",transition:"background 0.3s",flexShrink:0}}>
+        <div style={{position:"absolute",top:2,left:on?18:2,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.15)"}}/>
+      </div>
+      <span style={{fontSize:11.5,color:on?"#534AB7":"rgba(128,128,120,0.45)",fontWeight:on?500:400,transition:"all 0.2s"}}>{label}</span>
+    </label>
+  );
+}
+
+function Card({s,i,status,onStatus,note,onNote,imgOn,onImgToggle}){
+  const [open,setOpen]=useState(false);
+  const [showEdit,setShowEdit]=useState(false);
+  const del=status==="delete";
+  const bdr=status==="keep"?"1.5px solid rgba(29,158,117,0.3)":status==="delete"?"1.5px solid rgba(216,90,48,0.2)":status==="replace"?"1.5px solid rgba(186,117,23,0.25)":"1px solid rgba(128,128,120,0.1)";
+  const dl={fontSize:11,fontWeight:500,color:"rgba(128,128,120,0.5)",marginBottom:2,marginTop:10};
+  const dt={fontSize:12.5,lineHeight:1.7};
+  return(
+    <div style={{background:"rgba(128,128,120,0.04)",borderRadius:12,border:bdr,overflow:"hidden",transition:"all 0.3s",opacity:del?0.5:1}}>
+      <button onClick={()=>setOpen(!open)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"inherit",textAlign:"left"}}>
+        <div style={{fontSize:14,fontWeight:500,color:"rgba(128,128,120,0.3)",minWidth:20}}>{i+1}</div>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3,flexWrap:"wrap"}}>
+            <span style={{fontSize:14,fontWeight:500,textDecoration:del?"line-through":"none"}}>{s.name}</span>
+            <TypeBadge type={s.type}/><StatusBadge status={status}/>
+            {imgOn&&<span style={{padding:"2px 8px",borderRadius:12,background:"rgba(83,74,183,0.1)",color:"#534AB7",fontSize:10,fontWeight:500}}>🎨 画像生成ON</span>}
+          </div>
+          <div style={{fontSize:12,color:"rgba(128,128,120,0.5)"}}>{s.cat} • {s.budget} • {s.period}</div>
+        </div>
+        <div style={{width:22,height:22,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",background:open?"rgba(29,158,117,0.1)":"rgba(128,128,120,0.06)",color:open?"#0F6E56":"rgba(128,128,120,0.35)",fontSize:11,transition:"all 0.3s",transform:open?"rotate(180deg)":"rotate(0deg)",flexShrink:0}}>▼</div>
+      </button>
+
+      <div style={{display:"flex",gap:6,padding:"0 16px 10px 48px",flexWrap:"wrap",alignItems:"center"}}>
+        <ActBtn icon="✓" label="確定" active={status==="keep"} color="#0F6E56" onClick={()=>onStatus(status==="keep"?"none":"keep")}/>
+        <ActBtn icon="↻" label="入れ替え" active={status==="replace"} color="#854F0B" onClick={()=>onStatus(status==="replace"?"none":"replace")}/>
+        <ActBtn icon="✕" label="削除" active={status==="delete"} color="#993C1D" onClick={()=>onStatus(status==="delete"?"none":"delete")}/>
+        <div style={{width:1,height:18,background:"rgba(128,128,120,0.1)",margin:"0 2px"}}/>
+        <ActBtn icon="✎" label={showEdit?"閉じる":"編集指示"} active={showEdit||!!note} color="#534AB7" onClick={()=>setShowEdit(!showEdit)}/>
+        <div style={{width:1,height:18,background:"rgba(128,128,120,0.1)",margin:"0 2px"}}/>
+        <Toggle on={imgOn} onToggle={onImgToggle} label="AI画像生成"/>
+      </div>
+
+      {showEdit&&<div style={{padding:"0 16px 12px 48px"}}>
+        <textarea value={note} onChange={e=>onNote(e.target.value)} placeholder={status==="replace"?"例：抽選会に入れ替えて":"例：予算を下げて / ターゲット変更"} rows={2}
+          style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(128,128,120,0.2)",fontSize:12.5,fontFamily:"inherit",resize:"none",color:"inherit",background:"transparent",boxSizing:"border-box"}}/>
+        {note&&<div style={{fontSize:11,color:"rgba(128,128,120,0.4)",marginTop:4}}>✓ 再生成時に反映されます</div>}
+      </div>}
+
+      {open&&<div style={{padding:"0 16px 16px 48px"}}>
+        <div style={{borderTop:"1px solid rgba(128,128,120,0.08)",paddingTop:12}}>
+          <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:8}}>
+            <div><div style={dl}>ターゲット</div><div style={{fontSize:12}}>{s.target}</div></div>
+            <div><div style={dl}>想定テナント</div><div style={{fontSize:12}}>{s.tenant}</div></div>
+          </div>
+          <div style={dl}>施策概要</div><div style={dt}>{s.summary}</div>
+          <div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:"rgba(29,158,117,0.05)",border:"1px solid rgba(29,158,117,0.12)"}}>
+            <div style={{...dl,color:"#0F6E56",marginTop:0}}>選定理由</div><div style={{...dt,fontSize:12}}>{s.reason}</div>
+          </div>
+          <div style={{marginTop:8,padding:"10px 14px",borderRadius:8,background:"rgba(216,90,48,0.04)",border:"1px solid rgba(216,90,48,0.1)"}}>
+            <div style={{...dl,color:"#993C1D",marginTop:0}}>リスク</div><div style={{...dt,fontSize:12}}>{s.risk}</div>
+          </div>
+          <div style={{marginTop:8,padding:"10px 14px",borderRadius:8,background:"rgba(83,74,183,0.04)",border:"1px solid rgba(83,74,183,0.1)"}}>
+            <div style={{...dl,color:"#534AB7",marginTop:0}}>過去実績</div><div style={{...dt,fontSize:12}}>{s.past}</div>
+          </div>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+function ImageRegenScreen({strategies:strats,imgFlags,onBack}){
+  const imgStrats=strats.filter(s=>imgFlags[s.id]);
+  const [prompts,setPrompts]=useState({});
+  const [batch,setBatch]=useState(3);
+  const [aspect,setAspect]=useState("16:9");
+  const [selected,setSelected]=useState(()=>{const o={};imgStrats.forEach(s=>o[s.id]=true);return o});
+  const [generating,setGenerating]=useState(false);
+  const [done,setDone]=useState(false);
+  const selCount=Object.values(selected).filter(Boolean).length;
+
+  const doGenerate=()=>{setGenerating(true);setTimeout(()=>{setGenerating(false);setDone(true)},3000)};
+
+  const sl={fontSize:11,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",color:"rgba(128,128,120,0.6)",marginBottom:8,marginTop:20};
+  const cs={background:"rgba(128,128,120,0.04)",borderRadius:12,padding:"16px 20px",border:"1px solid rgba(128,128,120,0.1)"};
+
+  return(
+    <div>
+      <button onClick={onBack} style={{background:"none",border:"none",color:"rgba(128,128,120,0.5)",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12}}>← 提案書に戻る</button>
+
+      <div style={{...cs,border:"1.5px solid rgba(83,74,183,0.25)",marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+          <span style={{fontSize:16}}>🎨</span>
+          <span style={{fontSize:15,fontWeight:600}}>AI画像 再生成</span>
+        </div>
+        <div style={{fontSize:12,color:"rgba(128,128,120,0.5)"}}>画像生成ONの施策に対して、スライド用画像を生成・再生成できます</div>
+      </div>
+
+      <div style={sl}>グローバル設定</div>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:8}}>
+        <div style={{...cs,flex:1,minWidth:160,padding:"12px 16px"}}>
+          <div style={{fontSize:11,color:"rgba(128,128,120,0.5)",marginBottom:6}}>バッチ枚数（1施策あたり）</div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {[1,2,3,4,5].map(n=>(
+              <button key={n} onClick={()=>setBatch(n)} style={{
+                width:32,height:32,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",
+                border:batch===n?"1.5px solid #534AB7":"1px solid rgba(128,128,120,0.15)",
+                background:batch===n?"rgba(83,74,183,0.1)":"transparent",
+                color:batch===n?"#534AB7":"rgba(128,128,120,0.5)",
+                fontSize:14,fontWeight:500,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",
+              }}>{n}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{...cs,flex:1,minWidth:160,padding:"12px 16px"}}>
+          <div style={{fontSize:11,color:"rgba(128,128,120,0.5)",marginBottom:6}}>アスペクト比</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {aspectRatios.map(ar=>(
+              <button key={ar.value} onClick={()=>setAspect(ar.value)} style={{
+                padding:"5px 12px",borderRadius:6,fontSize:12,fontFamily:"inherit",cursor:"pointer",transition:"all 0.2s",
+                border:aspect===ar.value?"1.5px solid #534AB7":"1px solid rgba(128,128,120,0.15)",
+                background:aspect===ar.value?"rgba(83,74,183,0.1)":"transparent",
+                color:aspect===ar.value?"#534AB7":"rgba(128,128,120,0.5)",
+              }}>{ar.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={sl}>施策別の画像指示（{imgStrats.length}施策）</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {imgStrats.map(s=>(
+          <div key={s.id} style={{...cs,padding:"12px 16px",border:selected[s.id]?"1.5px solid rgba(83,74,183,0.25)":"1px solid rgba(128,128,120,0.1)",opacity:selected[s.id]?1:0.5,transition:"all 0.3s"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <input type="checkbox" checked={!!selected[s.id]} onChange={()=>setSelected(p=>({...p,[s.id]:!p[s.id]}))}
+                style={{width:16,height:16,accentColor:"#534AB7",cursor:"pointer"}}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:500}}>{s.name}</div>
+                <div style={{fontSize:11,color:"rgba(128,128,120,0.5)"}}>{s.cat} • {s.period}</div>
+              </div>
+              <TypeBadge type={s.type}/>
+            </div>
+            {selected[s.id]&&(
+              <textarea
+                value={prompts[s.id]||""} onChange={e=>setPrompts(p=>({...p,[s.id]:e.target.value}))}
+                placeholder={`例：「${s.name}」のイメージ画像。ルミナスモール相模の館内で、${s.target}が楽しんでいる様子。明るく活気のある雰囲気。`}
+                rows={2}
+                style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(83,74,183,0.15)",fontSize:12.5,fontFamily:"inherit",resize:"none",color:"inherit",background:"rgba(83,74,183,0.02)",boxSizing:"border-box"}}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{...cs,marginTop:16,background:"rgba(83,74,183,0.03)",border:"1px solid rgba(83,74,183,0.12)"}}>
+        <div style={{fontSize:12,color:"rgba(128,128,120,0.5)",display:"flex",gap:16,flexWrap:"wrap"}}>
+          <span>選択施策：<strong style={{color:"#534AB7"}}>{selCount}</strong></span>
+          <span>バッチ：<strong style={{color:"#534AB7"}}>{batch}枚</strong> / 施策</span>
+          <span>合計生成：<strong style={{color:"#534AB7"}}>{selCount*batch}枚</strong></span>
+          <span>比率：<strong style={{color:"#534AB7"}}>{aspect}</strong></span>
+        </div>
+      </div>
+
+      {!generating&&!done&&(
+        <button onClick={doGenerate} disabled={selCount===0} style={{
+          width:"100%",marginTop:16,padding:"14px",borderRadius:10,fontFamily:"inherit",fontSize:14,fontWeight:600,cursor:selCount?"pointer":"not-allowed",transition:"all 0.3s",
+          background:selCount?"linear-gradient(135deg,#534AB7,#3C3489)":"rgba(128,128,120,0.1)",
+          color:selCount?"#fff":"rgba(128,128,120,0.3)",border:"none",
+        }}>🎨 {selCount*batch}枚の画像を生成する</button>
+      )}
+
+      {generating&&(
+        <div style={{...cs,marginTop:16,textAlign:"center"}}>
+          <div style={{fontSize:14,fontWeight:500,marginBottom:8}}>🎨 画像を生成中...</div>
+          <div style={{fontSize:12,color:"rgba(128,128,120,0.5)"}}>画像生成AI で {selCount*batch}枚を生成しています（{aspect}）</div>
+          <div style={{height:6,borderRadius:3,background:"rgba(128,128,120,0.1)",overflow:"hidden",marginTop:12}}>
+            <div style={{height:"100%",width:"60%",background:"linear-gradient(90deg,#534AB7,#AFA9EC)",borderRadius:3,animation:"imgProg 2s ease infinite"}}/>
+          </div>
+        </div>
+      )}
+
+      {done&&(
+        <div style={{marginTop:16}}>
+          <div style={{...cs,border:"1.5px solid rgba(83,74,183,0.3)",textAlign:"center",padding:"20px"}}>
+            <div style={{fontSize:20,marginBottom:6}}>✅</div>
+            <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>画像生成が完了しました</div>
+            <div style={{fontSize:12,color:"rgba(128,128,120,0.5)",marginBottom:16}}>{selCount*batch}枚の画像をPPTXに挿入済み</div>
+            <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+              <button style={{padding:"12px 24px",borderRadius:10,background:"linear-gradient(135deg,#1D9E75,#0F6E56)",color:"#fff",border:"none",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📥 更新済みPPTXをDL</button>
+              <button onClick={()=>setDone(false)} style={{padding:"12px 20px",borderRadius:10,background:"rgba(83,74,183,0.08)",color:"#534AB7",border:"1.5px solid rgba(83,74,183,0.2)",fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>🎨 別の画像を再生成</button>
+            </div>
+          </div>
+          <button onClick={onBack} style={{width:"100%",marginTop:12,padding:10,background:"none",border:"1px solid rgba(128,128,120,0.12)",borderRadius:8,color:"rgba(128,128,120,0.5)",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>← 提案書に戻る</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App(){
+  const [step,setStep]=useState(0);
+  const [fac,setFac]=useState("sagami");
+  const [period,setPeriod]=useState("");
+  const [customPeriod,setCustomPeriod]=useState("");
+  const [showCustom,setShowCustom]=useState(false);
+  const [tgt,setTgt]=useState([]);
+  const [area,setArea]=useState([]);
+  const [ind,setInd]=useState([]);
+  const [kpis,setKpis]=useState([...defaultKpis]);
+  const [annualTheme,setAnnualTheme]=useState("");
+  const [bgt,setBgt]=useState(500);
+  const [free,setFree]=useState("");
+  const [mode,setMode]=useState(null);
+  const [genr,setGenr]=useState(false);
+  const [prog,setProg]=useState(0);
+  const [dStep,setDStep]=useState(0);
+  const [result,setResult]=useState(false);
+  const [conf,setConf]=useState(false);
+  const [sts,setSts]=useState({});
+  const [notes,setNotes]=useState({});
+  const [imgFlags,setImgFlags]=useState({});
+  const [imgScreen,setImgScreen]=useState(false);
+
+  const tog=(a,f,v)=>f(a.includes(v)?a.filter(x=>x!==v):[...a,v]);
+  const active=strategies.filter(s=>sts[s.id]!=="delete").length;
+  const kept=strategies.filter(s=>sts[s.id]==="keep").length;
+  const repl=strategies.filter(s=>sts[s.id]==="replace").length;
+  const deld=strategies.filter(s=>sts[s.id]==="delete").length;
+  const noted=Object.values(notes).filter(n=>n).length;
+  const imgCount=Object.values(imgFlags).filter(Boolean).length;
+  const hasEdits=repl>0||deld>0||noted>0;
+  const ok=(period||(showCustom&&customPeriod.trim()))&&tgt.length&&area.length;
+  const facName={sagami:"相模野",grace:"港南",baypark:"京葉"}[fac]||fac;
+  const currentAreas=areaByFacility[fac]||areaByFacility.sagami;
+
+  useEffect(()=>{
+    if(!genr)return;
+    if(mode==="fast"){const t=setInterval(()=>setProg(p=>{if(p>=100){clearInterval(t);setTimeout(()=>{setGenr(false);setResult(true);setStep(3)},300);return 100}return p+2}),40);return()=>clearInterval(t)}
+    if(mode==="quality"){const t=setInterval(()=>setDStep(d=>{if(d>=debates.length){clearInterval(t);setTimeout(()=>{setGenr(false);setResult(true);setStep(3)},500);return d}return d+1}),1800);return()=>clearInterval(t)}
+  },[genr,mode]);
+
+  const go=m=>{setMode(m);setGenr(true);setProg(0);setDStep(0);setResult(false);setConf(false);setSts({});setNotes({});setImgFlags({});setStep(2)};
+
+  const sl={fontSize:11,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",color:"rgba(128,128,120,0.6)",marginBottom:8,marginTop:20};
+  const cs={background:"rgba(128,128,120,0.04)",borderRadius:12,padding:"16px 20px",border:"1px solid rgba(128,128,120,0.1)"};
+
+  if(imgScreen){return(
+    <div style={{fontFamily:"'Noto Sans JP','Helvetica Neue',sans-serif",maxWidth:620,margin:"0 auto",color:"var(--color-text-primary,#2C2C2A)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+        <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#1D9E75,#534AB7)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:16,fontWeight:700}}>P</div>
+        <div><div style={{fontSize:16,fontWeight:600}}>Proposal Engine</div><div style={{fontSize:11,color:"rgba(128,128,120,0.6)"}}>AI画像 生成・再生成</div></div>
+      </div>
+      <ImageRegenScreen strategies={strategies} imgFlags={imgFlags} onBack={()=>setImgScreen(false)}/>
+      <style>{`@keyframes imgProg{0%{width:20%}50%{width:80%}100%{width:20%}}`}</style>
+    </div>
+  )}
+
+  return(
+    <div style={{fontFamily:"'Noto Sans JP','Helvetica Neue',sans-serif",maxWidth:620,margin:"0 auto",color:"var(--color-text-primary,#2C2C2A)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+        <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#1D9E75,#534AB7)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:16,fontWeight:700}}>P</div>
+        <div><div style={{fontSize:16,fontWeight:600}}>Proposal Engine</div><div style={{fontSize:11,color:"rgba(128,128,120,0.6)"}}>販促提案書 自動生成ツール</div></div>
+        <div style={{marginLeft:"auto",display:"flex",gap:6}}>{[0,1,2,3].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:step>=i?"#1D9E75":"rgba(128,128,120,0.15)",transition:"background 0.3s"}}/>)}</div>
+      </div>
+      <div style={{fontSize:11,color:"rgba(128,128,120,0.4)",marginBottom:20,display:"flex",gap:16}}>
+        {["① 入力","② モード","③ 生成","④ 結果"].map((l,i)=><span key={i} style={{color:step>=i?"#1D9E75":undefined,fontWeight:step===i?500:400}}>{l}</span>)}
+      </div>
+
+      {step===0&&<div>
+        <div style={sl}>対象施設</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={()=>{setFac("sagami");setArea([])}} style={{padding:"10px 16px",borderRadius:10,border:fac==="sagami"?"1.5px solid #1D9E75":"1px solid rgba(128,128,120,0.15)",background:fac==="sagami"?"rgba(29,158,117,0.06)":"transparent",fontSize:13,fontFamily:"inherit",color:"inherit",cursor:"pointer"}}>🏬 ルミナスモール相模</button>
+          <button style={{padding:"10px 16px",borderRadius:10,border:"1px solid rgba(128,128,120,0.15)",fontSize:13,fontFamily:"inherit",color:"inherit",opacity:0.35,cursor:"not-allowed"}}>🏬 グレースプラザ横浜（準備中）</button>
+        </div>
+        <div style={sl}>対象期間 <span style={{color:"#D85A30"}}>*</span></div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {periodPresets.map(p=><Chip key={p.value} label={p.label} selected={period===p.value&&!showCustom} onClick={()=>{setPeriod(p.value);setShowCustom(false)}}/>)}
+          <Chip label="+ カスタム" selected={showCustom} onClick={()=>{setShowCustom(!showCustom);if(!showCustom)setPeriod("")}}/>
+        </div>
+        {showCustom&&<div style={{marginTop:8}}><input value={customPeriod} onChange={e=>setCustomPeriod(e.target.value)} placeholder="例：12月単月、冬キャンペーン、GW前後2週間、8/10-8/20" style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid rgba(128,128,120,0.2)",fontSize:13,fontFamily:"inherit",color:"inherit",background:"transparent",boxSizing:"border-box"}}/></div>}
+        <div style={sl}>メインターゲット <span style={{color:"#D85A30"}}>*</span></div>
+        <TagInput tags={tgt} onChange={setTgt} placeholder="例：ファミリー、Z世代、シニア" suggestions={targetSuggestions}/>
+        <div style={sl}>注力商圏 <span style={{fontSize:10,color:"rgba(128,128,120,0.4)",fontWeight:400,letterSpacing:0}}>— {facName}</span> <span style={{color:"#D85A30"}}>*</span></div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{currentAreas.map(a=><Chip key={a} label={a} selected={area.includes(a)} onClick={()=>tog(area,setArea,a)}/>)}</div>
+        <div style={{borderTop:"1px solid rgba(128,128,120,0.1)",marginTop:24,paddingTop:16}}>
+          <div style={{...sl,marginTop:0}}>任意項目 <span style={{fontSize:10,color:"rgba(128,128,120,0.4)",fontWeight:400,letterSpacing:0}}>— 精度↑</span></div>
+          <div style={sl}>KPI優先順位</div>
+          <DragSortList items={kpis} onChange={setKpis}/>
+          <div style={sl}>注力業種</div><TagInput tags={ind} onChange={setInd} placeholder="例：衣料品、コスメ、飲食" suggestions={indSuggestions}/>
+          <div style={sl}>月間予算感</div><div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min={100} max={1500} step={50} value={bgt} onChange={e=>setBgt(e.target.value)} style={{flex:1}}/><span style={{fontSize:14,fontWeight:500,minWidth:80,textAlign:"right"}}>{Number(bgt).toLocaleString()}万円</span></div>
+          <div style={sl}>年間テーマ</div><input value={annualTheme} onChange={e=>setAnnualTheme(e.target.value)} placeholder="例：地域共生とサステナビリティ、10周年アニバーサリー" style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid rgba(128,128,120,0.2)",fontSize:13,fontFamily:"inherit",color:"inherit",background:"transparent",boxSizing:"border-box"}}/>
+          <div style={sl}>課題・要望</div><textarea value={free} onChange={e=>setFree(e.target.value)} placeholder="例：買い回り店舗数が前年割れ。若年層強化。" rows={3} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid rgba(128,128,120,0.2)",fontSize:13,fontFamily:"inherit",resize:"vertical",color:"inherit",background:"transparent",boxSizing:"border-box"}}/>
+        </div>
+        <button onClick={()=>{if(ok)setStep(1)}} style={{width:"100%",marginTop:24,padding:"14px",borderRadius:10,background:ok?"linear-gradient(135deg,#1D9E75,#0F6E56)":"rgba(128,128,120,0.1)",color:ok?"#fff":"rgba(128,128,120,0.3)",border:"none",fontSize:15,fontWeight:600,cursor:ok?"pointer":"not-allowed",fontFamily:"inherit"}}>次へ →</button>
+      </div>}
+
+      {step===1&&<div>
+        <div style={sl}>生成モードを選択</div>
+        <div style={{display:"flex",gap:12,flexDirection:"column"}}>
+          <button onClick={()=>go("fast")} style={{...cs,cursor:"pointer",textAlign:"left",border:"1.5px solid rgba(29,158,117,0.3)",fontFamily:"inherit"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:20}}>⚡</span><span style={{fontSize:16,fontWeight:600}}>高速ドラフト</span><span style={{marginLeft:"auto",fontSize:12,color:"#1D9E75",background:"rgba(29,158,117,0.08)",padding:"2px 10px",borderRadius:10}}>推奨</span></div><div style={{fontSize:13,color:"rgba(128,128,120,0.6)"}}>1〜2分で生成。社内検討用に。</div></button>
+          <button onClick={()=>go("quality")} style={{...cs,cursor:"pointer",textAlign:"left",border:"1.5px solid rgba(83,74,183,0.25)",fontFamily:"inherit"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:20}}>🧠</span><span style={{fontSize:16,fontWeight:600}}>品質モード</span><span style={{marginLeft:"auto",fontSize:12,color:"#534AB7",background:"rgba(83,74,183,0.08)",padding:"2px 10px",borderRadius:10}}>AI議論</span></div><div style={{fontSize:13,color:"rgba(128,128,120,0.6)"}}>3体のAIが議論。クライアント提出用に。</div></button>
+        </div>
+        <button onClick={()=>setStep(0)} style={{marginTop:16,background:"none",border:"none",color:"rgba(128,128,120,0.5)",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+      </div>}
+
+      {step===2&&genr&&<div>
+        {mode==="fast"&&<div style={cs}><div style={{fontSize:14,fontWeight:500,marginBottom:12}}>⚡ 生成中...</div><div style={{height:6,borderRadius:3,background:"rgba(128,128,120,0.1)",overflow:"hidden"}}><div style={{height:"100%",width:`${prog}%`,background:"linear-gradient(90deg,#1D9E75,#5DCAA5)",borderRadius:3,transition:"width 0.1s"}}/></div><div style={{fontSize:12,color:"rgba(128,128,120,0.4)",marginTop:8}}>{prog<30?"スコアリング中...":prog<60?"構成中...":prog<90?"テキスト生成中...":"出力準備中..."}</div></div>}
+        {mode==="quality"&&<div>
+          <div style={{...cs,marginBottom:12}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><span>🧠</span><span style={{fontSize:14,fontWeight:500}}>ディベート中</span><span style={{marginLeft:"auto",fontSize:11,color:"#534AB7",background:"rgba(83,74,183,0.08)",padding:"2px 8px",borderRadius:8}}>R{dStep<=2?1:dStep<=3?2:3}</span></div>
+            <div style={{display:"flex",gap:8}}>{[{n:"戦略家",c:"#534AB7",a:1},{n:"発想家",c:"#1D9E75",a:2},{n:"批評家",c:"#D85A30",a:3}].map((a,i)=><div key={i} style={{flex:1,padding:"8px",borderRadius:8,textAlign:"center",border:`1.5px solid ${dStep>=a.a?a.c:"rgba(128,128,120,0.1)"}`,opacity:dStep>=a.a?1:0.3,transition:"all 0.5s"}}><div style={{fontSize:11,fontWeight:500,color:a.c}}>{a.n}</div></div>)}</div>
+          </div>
+          {debates.slice(0,dStep).map((d,i)=><div key={i} style={{...cs,borderLeft:`3px solid ${d.color}`,marginBottom:8}}><div style={{fontSize:11,fontWeight:600,color:d.color,marginBottom:4}}>{d.agent}</div><div style={{fontSize:12.5,lineHeight:1.7,color:"rgba(128,128,120,0.75)"}}>{d.text}</div></div>)}
+          {dStep<debates.length&&<div style={{textAlign:"center",marginTop:16}}><span style={{fontSize:12,color:"rgba(128,128,120,0.4)"}}>● 議論中...</span></div>}
+        </div>}
+      </div>}
+
+      {step===3&&result&&<div>
+        <div style={{...cs,marginBottom:16,border:"1.5px solid rgba(29,158,117,0.25)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}><span style={{fontSize:16}}>✅</span><span style={{fontSize:15,fontWeight:600}}>提案骨子が完成しました</span></div>
+          <div style={{fontSize:12,color:"rgba(128,128,120,0.5)"}}>各カードで 確定・入替・削除 / 編集指示 / AI画像生成の設定ができます</div>
+        </div>
+
+        <div style={{...sl,display:"flex",alignItems:"center",gap:8}}>施策リスト</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {strategies.map((s,i)=><Card key={s.id} s={s} i={i} status={sts[s.id]||"none"} onStatus={v=>setSts(p=>({...p,[s.id]:v}))} note={notes[s.id]||""} onNote={v=>setNotes(p=>({...p,[s.id]:v}))} imgOn={!!imgFlags[s.id]} onImgToggle={()=>setImgFlags(p=>({...p,[s.id]:!p[s.id]}))}/>)}
+        </div>
+
+        {!conf&&<>
+          <div style={{display:"flex",gap:12,marginTop:16,padding:"10px 14px",borderRadius:8,background:hasEdits?"rgba(186,117,23,0.04)":"rgba(128,128,120,0.03)",border:hasEdits?"1px solid rgba(186,117,23,0.15)":"1px solid rgba(128,128,120,0.08)",fontSize:12,color:"rgba(128,128,120,0.5)",alignItems:"center",flexWrap:"wrap",transition:"all 0.3s"}}>
+            <span>採用 <strong style={{color:"#0F6E56"}}>{active}</strong></span>
+            {kept>0&&<span style={{color:"#0F6E56"}}>✓{kept}</span>}
+            {repl>0&&<span style={{color:"#854F0B"}}>↻{repl}</span>}
+            {deld>0&&<span style={{color:"#993C1D"}}>✕{deld}</span>}
+            {noted>0&&<span style={{color:"#534AB7"}}>✎{noted}</span>}
+            {imgCount>0&&<span style={{color:"#534AB7"}}>🎨{imgCount}</span>}
+            {hasEdits&&<span style={{marginLeft:"auto",fontSize:11,color:"#854F0B",fontWeight:500}}>変更あり</span>}
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:12}}>
+            <button style={{flex:1,padding:"14px",borderRadius:10,fontFamily:"inherit",fontSize:14,fontWeight:600,cursor:hasEdits?"pointer":"default",transition:"all 0.3s",background:hasEdits?"rgba(186,117,23,0.08)":"rgba(128,128,120,0.04)",color:hasEdits?"#854F0B":"rgba(128,128,120,0.25)",border:hasEdits?"1.5px solid rgba(186,117,23,0.3)":"1px solid rgba(128,128,120,0.1)"}}>↻ {hasEdits?`変更を反映して再生成（${repl+deld+noted}件）`:"変更を反映して再生成"}</button>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <button onClick={()=>setConf(true)} style={{flex:1,padding:"14px",borderRadius:10,background:"linear-gradient(135deg,#1D9E75,#0F6E56)",color:"#fff",border:"none",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>この内容で確定 ✓</button>
+          </div>
+        </>}
+
+        {conf&&<div style={{marginTop:20}}>
+          <div style={{...cs,border:"1.5px solid rgba(29,158,117,0.3)",background:"rgba(29,158,117,0.03)",textAlign:"center",padding:"24px 20px"}}>
+            <div style={{fontSize:24,marginBottom:8}}>🎉</div>
+            <div style={{fontSize:15,fontWeight:600,marginBottom:4}}>提案書が確定されました</div>
+            <div style={{fontSize:12,color:"rgba(128,128,120,0.5)",marginBottom:20}}>{active}施策 {imgCount>0?`（うち${imgCount}施策にAI画像生成）`:""}</div>
+            <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+              <button style={{padding:"12px 24px",borderRadius:10,background:"linear-gradient(135deg,#1D9E75,#0F6E56)",color:"#fff",border:"none",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>📥 PPTX</button>
+              {mode==="quality"&&<button style={{padding:"12px 20px",borderRadius:10,background:"rgba(83,74,183,0.08)",color:"#534AB7",border:"1.5px solid rgba(83,74,183,0.2)",fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>📋 議論ログ</button>}
+              {imgCount>0&&<button onClick={()=>setImgScreen(true)} style={{padding:"12px 20px",borderRadius:10,background:"rgba(83,74,183,0.08)",color:"#534AB7",border:"1.5px solid rgba(83,74,183,0.2)",fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>🎨 画像を再生成</button>}
+            </div>
+          </div>
+          <button onClick={()=>{setStep(0);setResult(false);setMode(null);setConf(false);setSts({});setNotes({});setImgFlags({})}} style={{width:"100%",marginTop:12,padding:10,background:"none",border:"1px solid rgba(128,128,120,0.12)",borderRadius:8,color:"rgba(128,128,120,0.5)",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>新しい提案書を作成 →</button>
+        </div>}
+      </div>}
+
+      <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+    </div>
+  );
+}
+
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
